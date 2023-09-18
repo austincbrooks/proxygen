@@ -16,7 +16,8 @@
 # along with Proxygen. If not, see <https://www.gnu.org/licenses/>.
 
 import json
-import subprocess
+import subprocess as sp
+import re
 
 from pathlib import Path
 
@@ -106,7 +107,16 @@ class Core:
         ]
         # fmt: on
 
-        subprocess.run(command)
+        frame_re = r"^frame=\s*(\d+)\s*fps="
+        proc = sp.Popen(command, stderr=sp.STDOUT, stdout=sp.PIPE, text=True, encoding="utf-8", bufsize=1)
+        # TODO: wrap with exception catch
+        for line in proc.stdout:
+        #for line in io.TextIOWrapper(proc.stdout, encoding="utf-8"):
+            # TODO: py3.11 walrus operator
+            print(line)
+            match = re.match(frame_re, line)
+            if match:
+                print(" ---> ", match.group(1))
 
 
     def _refresh_walk(self, original_dir: Path, timeline_dir: Path, timeline_cache: set) -> None:
