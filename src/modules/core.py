@@ -20,10 +20,16 @@ import subprocess as sp
 import re
 
 from pathlib import Path
+from datetime import datetime
 
 
 NAME = "Proxygen"
 VERSION = "0.1.0"
+
+
+class TranscodeCommand:
+    software_command: list[str] = None
+    software_cleanup: list[str] = None
 
 
 class Core:
@@ -78,15 +84,19 @@ class Core:
                 timeline_cache.add(item_path)
 
 
-    def _transcode(self, input_file: Path, output_file: Path) -> None:
+    def _transcode(self, input_file: Path, output_file: Path, log_file: Path) -> None:
         if output_file.exists():
             return
 
         # fmt: off
         command = [
             "ffmpeg",
+            "-benchmark",
+            "-loglevel", "verbose",
             "-i", str(input_file),
-            "-filter:v", "format=yuv420p",
+            "-filter:v",
+                "scale=-2:540,"
+                "format=yuv420p",
             "-colorspace", "bt709",
             "-codec:v", "libsvtav1",
             "-g", "4",
@@ -94,10 +104,10 @@ class Core:
             "-crf", "24",
             "-preset", "10",
             "-svtav1-params",
-                "tune=0:" +
-                "film-grain-denoise=0:" +
-                "film-grain=0:" +
-                "fast-decode=0:" +
+                "tune=0:"
+                "film-grain-denoise=0:"
+                "film-grain=0:"
+                "fast-decode=0:"
                 "tile-columns=1",
             "-codec:a", "libopus",
             "-b:a", "192k",
@@ -108,26 +118,31 @@ class Core:
         # fmt: on
 
         frame_re = r"^frame=\s*(\d+)\s*fps="
-        proc = sp.Popen(command, stderr=sp.STDOUT, stdout=sp.PIPE, text=True, encoding="utf-8", bufsize=1)
+        proc = sp.Popen(command, stderr=sp.STDOUT, stdout=sp.PIPE, text=True, bufsize=1)
         # TODO: wrap with exception catch
-        for line in proc.stdout:
-        #for line in io.TextIOWrapper(proc.stdout, encoding="utf-8"):
-            # TODO: py3.11 walrus operator
-            print(line)
-            match = re.match(frame_re, line)
-            if match:
-                print(" ---> ", match.group(1))
+        with open(log_file, "w", encoding='utf-8') as log_handle:
+            for line in proc.stdout:
+                log_handle.write(line)
+                if match := re.match(frame_re, line):
+                    print(match.group(1))
 
 
-    def _refresh_walk(self, original_dir: Path, timeline_dir: Path, timeline_cache: set) -> None:
+    def _refresh_walk(self,
+        original_dir: Path,
+        timeline_dir: Path,
+        log_dir: Path,
+        timeline_cache: set
+    ) -> None:
         for original_item_path in sorted(original_dir.iterdir()):
             timeline_item_path = timeline_dir / original_item_path.name
 
             if original_item_path.is_dir():
                 timeline_item_path.mkdir(parents=True, exist_ok=True)
-                self._refresh_walk(original_item_path, timeline_item_path, timeline_cache)
+                self._refresh_walk(original_item_path, timeline_item_path, log_dir, timeline_cache)
             else:
-                self._transcode(original_item_path, timeline_item_path)
+                timestamp = datetime.now().strftime("%Y-%m-%d %H-%M-%S")
+                log_file = log_dir / f"{timestamp} {original_item_path.stem}.txt"
+                self._transcode(original_item_path, timeline_item_path, log_file)
                 timeline_cache.discard(timeline_item_path)
 
 
@@ -155,5 +170,10 @@ class Core:
     def refresh(self) -> None:
         timeline_cache = set()
         self._cache_timeline(self._config['paths']['timeline'], timeline_cache)
-        self._refresh_walk(self._config['paths']['original'], self._config['paths']['timeline'], timeline_cache)
+        self._refresh_walk(
+            self._config['paths']['original'],
+            self._config['paths']['timeline'],
+            self._config['paths']['log'],
+            timeline_cache
+        )
         self._clean_timeline(self._config['paths']['timeline'], timeline_cache)
