@@ -1,7 +1,11 @@
 {
+    "versions": {
+        "program": "0.1.0",
+        "config": 0
+    },
     "paths": {
         "original": "4 - Original media",
         "timeline": "5 - Timeline media",
-        "log": "System/Log"
+        "log": "S - System/Log"
     }
 }

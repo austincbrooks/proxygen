@@ -22,14 +22,7 @@ import re
 from pathlib import Path
 from datetime import datetime
 
-
-NAME = "Proxygen"
-VERSION = "0.1.0"
-
-
-class TranscodeCommand:
-    software_command: list[str] = None
-    software_cleanup: list[str] = None
+import const
 
 
 class Core:
@@ -50,8 +43,36 @@ class Core:
                 self._dict_keys_to_lower_case(v)
 
 
+    def _upgrade_config_version_0_to_1(self, input: dict) -> int:
+        output_version = 1
+
+        try:
+            input['versions']['config'] = output_version
+        except Exception:
+            raise KeyError(f"Failed to upgrade the config file from version {output_version-1} to {output_version}")
+
+        return output_version
+
+
+    def _upgrade_config_version(self, input: dict) -> None:
+        try:
+            version = int(input['versions']['config'])
+        except Exception:
+            raise KeyError("Config file does not have version information")
+        
+        if const.CONFIG_VERSION < version:
+            raise ValueError(f"Config file version is {version} but max supported version is {const.CONFIG_VERSION}")
+        
+        if version == 0:
+            version = self._upgrade_config_version_0_to_1(self._config)
+        # An example of how upgrade chaining will work in the future:
+        # if version == 1:
+        #     version = self._upgrade_config_version_1_to_2(self._config)
+
+
     def _validate_config_paths(self) -> None:
         # TODO: Check for all required paths specified.
+        # TODO: The path cannot be the root directory.
         for k, v in self._config['paths'].items():
             if not v:
                 raise FileNotFoundError(f"No path specified for config key: {k}")
@@ -72,6 +93,7 @@ class Core:
         with open(config_file, "r", encoding="utf-8") as config_handle:
             self._config = json.load(config_handle)
         self._dict_keys_to_lower_case(self._config)
+        self._upgrade_config_version(self._config)
 
         self._validate_config_paths()
 
@@ -121,6 +143,10 @@ class Core:
         proc = sp.Popen(command, stderr=sp.STDOUT, stdout=sp.PIPE, text=True, bufsize=1)
         # TODO: wrap with exception catch
         with open(log_file, "w", encoding='utf-8') as log_handle:
+            log_handle.write("Command line:\n")
+            log_handle.writelines("\n".join(command))
+            log_handle.write("\n\n")
+
             for line in proc.stdout:
                 log_handle.write(line)
                 if match := re.match(frame_re, line):
