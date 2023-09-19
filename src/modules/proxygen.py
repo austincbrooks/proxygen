@@ -15,13 +15,13 @@
 # You should have received a copy of the GNU General Public License
 # along with Proxygen. If not, see <https://www.gnu.org/licenses/>.
 
-import multiprocessing as mp
 import argparse
 import sys
 import os
 
 from pathlib import Path
 
+import const
 import core
 
 
@@ -44,19 +44,15 @@ def get_config_file(user_specified_path: str = None) -> Path:
 
 
 if __name__ == '__main__':
-    # Required to compile Python code to an executable. See:
-    # https://github.com/pyinstaller/pyinstaller/wiki/Recipe-Multiprocessing
-    # https://docs.python.org/3/library/multiprocessing.html#multiprocessing.freeze_support
-    mp.freeze_support()
-
-    parser = argparse.ArgumentParser(description=f'{core.NAME}: Optimize media files and create proxies')
+    parser = argparse.ArgumentParser(description=f'{const.PROGRAM_NAME}: Optimize media files and create proxies')
     parser.add_argument('-v', '--version', action='store_true', help='Display the program version number and exit')
     parser.add_argument('-c', '--config', help='Path to the project configuration file (optional)')
     parser.add_argument('-r', '--refresh', action='store_true', help='Scan files and process any changes')
     args = parser.parse_args()
 
     if args.version:
-        print(core.NAME, core.VERSION)
+        print(const.PROGRAM_NAME, const.PROGRAM_VERSION)
+        print("Max config version:", const.CONFIG_VERSION)
         sys.exit(0)
 
     config_file = get_config_file(args.config)
