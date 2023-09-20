@@ -22,19 +22,13 @@ from pathlib import Path
 from datetime import datetime
 
 import config
+import dirprune
 
 
 class Core:
     def __init__(self, config: config.Config) -> None:
         self._config = config
-
-
-    def _cache_timeline(self, start_dir: Path, timeline_cache: set) -> None:
-        for item_path in start_dir.iterdir():
-            if item_path.is_dir():
-                self._cache_timeline(item_path, timeline_cache)
-            else:
-                timeline_cache.add(item_path)
+        self._timeline_prune = dirprune.DirPrune(config.paths['timeline'])
 
 
     def _transcode(self, input_file: Path, output_file: Path, log_file: Path) -> None:
@@ -84,55 +78,33 @@ class Core:
                     print(match.group(1))
 
 
-    def _refresh_walk(self,
+    def _refresh_recurse(self,
         original_dir: Path,
         timeline_dir: Path,
-        log_dir: Path,
-        timeline_cache: set
+        log_dir: Path
     ) -> None:
         for original_item_path in sorted(original_dir.iterdir()):
             timeline_item_path = timeline_dir / original_item_path.name
 
             if original_item_path.is_dir():
                 timeline_item_path.mkdir(parents=True, exist_ok=True)
-                self._refresh_walk(original_item_path, timeline_item_path, log_dir, timeline_cache)
+                self._refresh_recurse(original_item_path, timeline_item_path, log_dir)
             else:
                 timestamp = datetime.now().strftime("%Y-%m-%d %H-%M-%S")
                 log_file = log_dir / f"{timestamp} {original_item_path.stem}.txt"
                 self._transcode(original_item_path, timeline_item_path, log_file)
-                timeline_cache.discard(timeline_item_path)
-
-
-    def _is_dir_empty(self, dir: Path) -> bool:
-        return not next(dir.iterdir(), False)
-
-
-    def _clean_timeline_walk(self, start_dir: Path) -> None:
-        for item_path in start_dir.iterdir():
-            if item_path.is_dir():
-                self._clean_timeline_walk(item_path)
-                if self._is_dir_empty(item_path):
-                    item_path.rmdir()
-
-
-    def _clean_timeline(self, start_dir: Path, timeline_cache: set) -> None:
-        for item_path in timeline_cache:
-            if item_path.exists():
-                if item_path.is_file():
-                    item_path.unlink()
-
-        self._clean_timeline_walk(start_dir)
+                self._timeline_prune.preserve(timeline_item_path)
 
 
     def refresh(self) -> None:
         paths = self._config.paths
 
-        timeline_cache = set()
-        self._cache_timeline(paths['timeline'], timeline_cache)
-        self._refresh_walk(
+        self._timeline_prune.snapshot()
+
+        self._refresh_recurse(
             paths['original'],
             paths['timeline'],
-            paths['log'],
-            timeline_cache
+            paths['log']
         )
-        self._clean_timeline(paths['timeline'], timeline_cache)
+
+        self._timeline_prune.prune()
