@@ -15,87 +15,18 @@
 # You should have received a copy of the GNU General Public License
 # along with Proxygen. If not, see <https://www.gnu.org/licenses/>.
 
-import json
 import subprocess as sp
 import re
 
 from pathlib import Path
 from datetime import datetime
 
-import const
+import config
 
 
 class Core:
-    def _dict_keys_to_lower_case(self, input: dict) -> None:
-        for k, v in input.copy().items():
-            k_lower = k.lower()
-
-            if k == k_lower:
-                pass
-            elif input.get(k_lower):
-                del input[k]
-                continue
-            else:
-                input[k_lower] = v
-                del input[k]
-
-            if isinstance(v, dict):
-                self._dict_keys_to_lower_case(v)
-
-
-    def _upgrade_config_version_0_to_1(self, input: dict) -> int:
-        output_version = 1
-
-        try:
-            input['versions']['config'] = output_version
-        except Exception:
-            raise KeyError(f"Failed to upgrade the config file from version {output_version-1} to {output_version}")
-
-        return output_version
-
-
-    def _upgrade_config_version(self, input: dict) -> None:
-        try:
-            version = int(input['versions']['config'])
-        except Exception:
-            raise KeyError("Config file does not have version information")
-        
-        if const.CONFIG_VERSION < version:
-            raise ValueError(f"Config file version is {version} but max supported version is {const.CONFIG_VERSION}")
-        
-        if version == 0:
-            version = self._upgrade_config_version_0_to_1(self._config)
-        # An example of how upgrade chaining will work in the future:
-        # if version == 1:
-        #     version = self._upgrade_config_version_1_to_2(self._config)
-
-
-    def _validate_config_paths(self) -> None:
-        # TODO: Check for all required paths specified.
-        # TODO: The path cannot be the root directory.
-        for k, v in self._config['paths'].items():
-            if not v:
-                raise FileNotFoundError(f"No path specified for config key: {k}")
-
-            v_path = Path(v)
-            if v_path.exists():
-                if not v_path.is_dir():
-                    raise ValueError(f"Config key points to file instead of directory: {k} -> {v}")
-            else:
-                v_path.mkdir(parents=True)
-
-            self._config['paths'][k] = v_path
-
-
-    def __init__(self, config_file: Path) -> None:
-        self._config_file = config_file
-
-        with open(config_file, "r", encoding="utf-8") as config_handle:
-            self._config = json.load(config_handle)
-        self._dict_keys_to_lower_case(self._config)
-        self._upgrade_config_version(self._config)
-
-        self._validate_config_paths()
+    def __init__(self, config: config.Config) -> None:
+        self._config = config
 
 
     def _cache_timeline(self, start_dir: Path, timeline_cache: set) -> None:
@@ -194,12 +125,14 @@ class Core:
 
 
     def refresh(self) -> None:
+        paths = self._config.paths
+
         timeline_cache = set()
-        self._cache_timeline(self._config['paths']['timeline'], timeline_cache)
+        self._cache_timeline(paths['timeline'], timeline_cache)
         self._refresh_walk(
-            self._config['paths']['original'],
-            self._config['paths']['timeline'],
-            self._config['paths']['log'],
+            paths['original'],
+            paths['timeline'],
+            paths['log'],
             timeline_cache
         )
-        self._clean_timeline(self._config['paths']['timeline'], timeline_cache)
+        self._clean_timeline(paths['timeline'], timeline_cache)
