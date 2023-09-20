@@ -19,28 +19,9 @@ import argparse
 import sys
 import os
 
-from pathlib import Path
-
 import const
+import config
 import core
-
-
-def get_config_file(user_specified_path: str = None) -> Path:
-    if user_specified_path:
-        test_path = Path(user_specified_path)
-    else:
-        test_path = Path()
-
-    if not test_path.exists():
-        raise FileNotFoundError("Could not find the config file")
-    
-    if test_path.is_dir():
-        for test_file in sorted(test_path.iterdir()):
-            if test_file.suffix.lower() == ".pxgc":
-                return test_file.resolve()
-        raise FileNotFoundError("Could not find the config file")
-    else:
-        return test_path.resolve()
 
 
 if __name__ == '__main__':
@@ -52,12 +33,12 @@ if __name__ == '__main__':
 
     if args.version:
         print(const.PROGRAM_NAME, const.PROGRAM_VERSION)
-        print("Max config version:", const.CONFIG_VERSION)
+        print("Config file version:", const.CONFIG_VERSION)
         sys.exit(0)
 
-    config_file = get_config_file(args.config)
-    os.chdir(config_file.parent)
-    pxg = core.Core(config_file)
+    cfg = config.Config(args.config)
+    os.chdir(cfg.project_dir)
+    pxg = core.Core(cfg)
 
     if args.refresh:
         pxg.refresh()
