@@ -6,6 +6,7 @@
     "paths": {
         "original": "4 - Original media",
         "timeline": "5 - Timeline media",
-        "log": "S - System/Log"
+        "log": "S - System/Log",
+        "temp": "S - System/Temp"
     }
 }

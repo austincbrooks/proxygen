@@ -20,119 +20,78 @@ import re
 
 from pathlib import Path
 from datetime import datetime
+import threading
+import os
 
 import config
+import dirprune
+import profile
+import profile_MLT1
 
 
 class Core:
     def __init__(self, config: config.Config) -> None:
         self._config = config
+        self._timeline_prune = dirprune.DirPrune(config.paths['timeline'])
+        self._io_lock = threading.Lock()
+        self._profile = profile_MLT1.Profile_MLT1(self._io_lock, config.paths['temp'])
 
 
-    def _cache_timeline(self, start_dir: Path, timeline_cache: set) -> None:
-        for item_path in start_dir.iterdir():
-            if item_path.is_dir():
-                self._cache_timeline(item_path, timeline_cache)
-            else:
-                timeline_cache.add(item_path)
+    def _run_job(self, tjob: profile.TranscodeJob) -> None:
+        input = tjob.software[0].input_file
+        command = tjob.software[0].command_line
 
-
-    def _transcode(self, input_file: Path, output_file: Path, log_file: Path) -> None:
-        if output_file.exists():
-            return
-
-        # fmt: off
-        command = [
-            "ffmpeg",
-            "-benchmark",
-            "-loglevel", "verbose",
-            "-i", str(input_file),
-            "-filter:v",
-                "scale=-2:540,"
-                "format=yuv420p",
-            "-colorspace", "bt709",
-            "-codec:v", "libsvtav1",
-            "-g", "4",
-            "-bf", "0",
-            "-crf", "24",
-            "-preset", "10",
-            "-svtav1-params",
-                "tune=0:"
-                "film-grain-denoise=0:"
-                "film-grain=0:"
-                "fast-decode=0:"
-                "tile-columns=1",
-            "-codec:a", "libopus",
-            "-b:a", "192k",
-            "-f", "matroska",
-            "-y",
-            str(output_file)
-        ]
-        # fmt: on
-
+        local_time = datetime.now().isoformat(sep=" ", timespec='milliseconds').replace(":", "-")
+        log_file = self._config.paths['log'] / f"{local_time} - {str(input.name)}.txt"
         frame_re = r"^frame=\s*(\d+)\s*fps="
-        proc = sp.Popen(command, stderr=sp.STDOUT, stdout=sp.PIPE, text=True, bufsize=1)
+
         # TODO: wrap with exception catch
         with open(log_file, "w", encoding='utf-8') as log_handle:
+            log_handle.write(f"Local time: {local_time}\n")
+            log_handle.write("\n")
             log_handle.write("Command line:\n")
             log_handle.writelines("\n".join(command))
             log_handle.write("\n\n")
 
+            proc = sp.Popen(command, stderr=sp.STDOUT, stdout=sp.PIPE, text=True, bufsize=1)
             for line in proc.stdout:
                 log_handle.write(line)
                 if match := re.match(frame_re, line):
                     print(match.group(1))
 
+        last_access_time = input.stat().st_atime
+        last_modify_time = input.stat().st_mtime
+        for output_file in tjob.software[0].output_files:
+            os.utime(output_file, (last_access_time, last_modify_time))
 
-    def _refresh_walk(self,
+
+    def _refresh_recurse(self,
         original_dir: Path,
-        timeline_dir: Path,
-        log_dir: Path,
-        timeline_cache: set
+        timeline_dir: Path
     ) -> None:
         for original_item_path in sorted(original_dir.iterdir()):
             timeline_item_path = timeline_dir / original_item_path.name
 
             if original_item_path.is_dir():
                 timeline_item_path.mkdir(parents=True, exist_ok=True)
-                self._refresh_walk(original_item_path, timeline_item_path, log_dir, timeline_cache)
-            else:
-                timestamp = datetime.now().strftime("%Y-%m-%d %H-%M-%S")
-                log_file = log_dir / f"{timestamp} {original_item_path.stem}.txt"
-                self._transcode(original_item_path, timeline_item_path, log_file)
-                timeline_cache.discard(timeline_item_path)
+                self._refresh_recurse(original_item_path, timeline_item_path)
+                continue
 
+            self._timeline_prune.preserve(timeline_item_path)
 
-    def _is_dir_empty(self, dir: Path) -> bool:
-        return not next(dir.iterdir(), False)
-
-
-    def _clean_timeline_walk(self, start_dir: Path) -> None:
-        for item_path in start_dir.iterdir():
-            if item_path.is_dir():
-                self._clean_timeline_walk(item_path)
-                if self._is_dir_empty(item_path):
-                    item_path.rmdir()
-
-
-    def _clean_timeline(self, start_dir: Path, timeline_cache: set) -> None:
-        for item_path in timeline_cache:
-            if item_path.exists():
-                if item_path.is_file():
-                    item_path.unlink()
-
-        self._clean_timeline_walk(start_dir)
+            if not timeline_item_path.exists():
+                tjob = self._profile.transcode(original_item_path, timeline_item_path)
+                self._run_job(tjob)
 
 
     def refresh(self) -> None:
         paths = self._config.paths
 
-        timeline_cache = set()
-        self._cache_timeline(paths['timeline'], timeline_cache)
-        self._refresh_walk(
+        self._timeline_prune.snapshot()
+
+        self._refresh_recurse(
             paths['original'],
-            paths['timeline'],
-            paths['log'],
-            timeline_cache
+            paths['timeline']
         )
-        self._clean_timeline(paths['timeline'], timeline_cache)
+
+        self._timeline_prune.prune()

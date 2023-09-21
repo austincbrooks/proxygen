@@ -66,7 +66,7 @@ class Config:
         return upgrade_version
 
 
-    def _upgrade_config_version(self, config: dict) -> None:
+    def _upgrade_config_file(self, config: dict) -> None:
         try:
             version = int(config['versions']['config'])
         except Exception:
@@ -90,11 +90,12 @@ class Config:
             raise Exception(msg)
 
 
-    def _validate_config_paths(self, config: dict) -> None:
+    def _resolve_config_paths(self, config: dict, project_dir: Path) -> dict:
         required_paths = set()
         required_paths.add('original')
         required_paths.add('timeline')
         required_paths.add('log')
+        required_paths.add('temp')
 
         paths = {}
         for k, v in config['paths'].items():
@@ -104,8 +105,10 @@ class Config:
                 raise ValueError(msg)
 
             v_path = Path(v)
+            if not v_path.is_absolute():
+                v_path = project_dir / v_path
 
-            if v_path == v_path.parent:
+            if v_path == v_path.root:
                 msg = "Config file path must not point to root: {key} -> {value}"
                 msg = msg.format(key=k, value=v)
                 raise ValueError(msg)
@@ -126,22 +129,24 @@ class Config:
             msg = msg.format(paths=", ".join(required_paths))
             raise KeyError(msg)
 
-        self._paths = paths
+        return paths
 
 
     def __init__(self, user_specified_path: str = None) -> None:
         config_file = self._find_config_file(user_specified_path)
+        project_dir = config_file.parent
 
         with open(config_file, "r", encoding="utf-8") as config_handle:
             config = json.load(config_handle)
-
         self._dict_keys_to_lower_case(config)
-        self._upgrade_config_version(config)
-        self._validate_config_paths(config)
+        self._upgrade_config_file(config)
+
+        paths = self._resolve_config_paths(config, project_dir)
 
         self._config_file = config_file
-        self._project_dir = config_file.parent
+        self._project_dir = project_dir
         self._config = config
+        self._paths = paths
 
 
     @property
