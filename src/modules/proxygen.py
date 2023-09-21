@@ -17,7 +17,6 @@
 
 import argparse
 import sys
-import os
 
 import const
 import config
@@ -37,7 +36,6 @@ if __name__ == '__main__':
         sys.exit(0)
 
     cfg = config.Config(args.config)
-    os.chdir(cfg.project_dir)
     pxg = core.Core(cfg)
 
     if args.refresh:

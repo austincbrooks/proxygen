@@ -52,7 +52,7 @@ class DirPrune:
             msg = msg.format(dir=str(test_path))
             raise ValueError(msg)
 
-        if test_path == test_path.parent:
+        if test_path == test_path.root:
             msg = "Pruning cannot be done on a root directory"
             raise ValueError(msg)
 
@@ -70,6 +70,13 @@ class DirPrune:
 
 
     def prune(self) -> None:
+        """
+        A check is done to ensure that the working directory
+        did not change between the snapshot and the prune.
+        If there were any relative paths in the snapshot,
+        they would delete the wrong files if the working
+        directory changed.
+        """
         if Path.cwd().resolve() != self._working_dir:
             msg = "Cannot prune if working directory changes after snapshot"
             raise RuntimeError(msg)
