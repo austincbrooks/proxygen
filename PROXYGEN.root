@@ -1,0 +1,3 @@
+This file helps the portable archive version
+of Proxygen know when it has found the root
+directory of its installation.
