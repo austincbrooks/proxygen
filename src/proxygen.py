@@ -43,6 +43,8 @@ def find_self_dir() -> Path:
 
 
 def find_ffmpeg_exe() -> str:
+    """Returns a fully-qualified path to an FFmpeg executable."""
+
     if platform.system() == "Windows":
         ffmpeg_exe = "ffmpeg.exe"
     else:
@@ -72,7 +74,7 @@ def find_ffmpeg_exe() -> str:
     # Hunt for a system-wide ffmpeg in PATH.
     probe_file = shutil.which(ffmpeg_exe)
     print("probe_file", probe_file)
-    if probe_file is not None:
+    if probe_file:
         return probe_file
 
     raise FileNotFoundError("Cannot find FFmpeg executable")
@@ -121,8 +123,8 @@ def main() -> int:
     """Where things get real."""
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("source_dir")
-    parser.add_argument("target_dir")
+    parser.add_argument("--source-dir")
+    parser.add_argument("--target-dir")
     args = parser.parse_args()
 
     ffmpeg_exe = find_ffmpeg_exe()
